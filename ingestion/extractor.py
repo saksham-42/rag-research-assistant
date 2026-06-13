@@ -11,7 +11,7 @@ def extract_pdf(pdf_path):
             print(f"Warning: Page {page_num + 1} has no text — possibly scanned.")
             continue
 
-        full_text += text + "\n\n"
+        full_text += text + f"\n[Page {page_num + 1}]\n"
 
     doc.close()
 

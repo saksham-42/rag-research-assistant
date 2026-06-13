@@ -35,11 +35,6 @@ def fix_spacing(text):
     text = re.sub(r'[ \t]+$', '', text, flags=re.MULTILINE)
     return text
 
-def remove_page_markers(text):
-    text = re.sub(r'-- PAGE BREAK --', '', text)
-    text = re.sub(r'\[PAGE \d+\]', '', text)
-    return text
-
 def fix_hyphenation(text):
     return re.sub(r'(\w)-\n(\w)', r'\1\2', text)
 
@@ -50,10 +45,15 @@ def fix_section_headings(text):
     text = re.sub(r'(\d+\.\s+[A-Z][a-zA-Z\s]+?)([A-Z][a-z])', r'\1\n\2', text)
     return text
 
+def remove_citation(text):
+    text = re.sub(r'(Received|Revised|Accepted|Published|Correspondence|Copyright|Licensee|Academic Editor):.*', '', text)
+    text = re.sub(r'^(Received|Revised|Accepted|Published|Correspondence|Copyright|Licensee)\s*$', '', text, flags=re.MULTILINE)
+    return text
+
 def clean_text(text):
     text = fix_unicode(text)
+    text = remove_citation(text)
     text = remove_headers_footers(text)
-    text = remove_page_markers(text)
     text = fix_hyphenation(text)
     text = fix_section_headings(text)
     text = fix_line_breaks(text)
