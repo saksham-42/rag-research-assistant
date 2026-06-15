@@ -25,6 +25,7 @@ def extract_pdf(pdf_path):
         f.write(full_text)
 
     print(f"Saved :{output_path}")
+    return full_text
     
 if __name__ == "__main__":
     pdf_path = sys.argv[1]
