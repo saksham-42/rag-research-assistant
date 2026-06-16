@@ -2,7 +2,7 @@ import tiktoken, os, sys, re
 
 def get_page_number(tokens, token_position, enc):
     partial_text = enc.decode(tokens[:token_position])
-    pages = re.findall(r'\[Pages (\d+)\]', partial_text)
+    pages = re.findall(r'\[Page (\d+)\]', partial_text)
     return int(pages[-1]) if pages else 1
 
 def chunking(text, filename, chunk_size=512, overlap = 50):
