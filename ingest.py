@@ -1,7 +1,7 @@
 import os, sys
 from ingestion.extractor import extract_pdf
 from ingestion.cleaner import clean_text
-from ingestion.chunker import chunking
+from ingestion.sen_chunking import sent_chunker
 from storage.vector_store import add_chunks, get_client, get_collection
 
 def already_ingested(collection, filename):
@@ -34,7 +34,7 @@ def ingest_folder(folder_path):
             continue
 
         cleaned = clean_text(raw_text)
-        chunks = chunking(cleaned, clean_file)
+        chunks = sent_chunker(cleaned, clean_file)
         add_chunks(collection, chunks)
         
         print(f"Done, {len(chunks)} chunks stored")
