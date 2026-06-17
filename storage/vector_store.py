@@ -4,18 +4,27 @@ def get_client():
     return chromadb.PersistentClient(path="chroma_db")
 
 def get_collection(client, collection_name="papers"):
-    return client.get_or_create_collection(name=collection_name)
+    return client.get_or_create_collection(name=collection_name, metadata={"hnsw:space":"cosine"})
 
-def add_chunks(collection, chunks):
+def add_chunks(collection, chunks, embeddings=None):
     documents = [c["text"] for c in chunks]
     metadatas = [c["metadata"] for c in chunks]
     ids = [f"{c['metadata']['source']}_chunk_{c['metadata']['chunk_index']}" for c in chunks]
 
-    collection.add(
-        documents=documents,
-        metadatas=metadatas,
-        ids=ids
-    )
+    if embeddings is not None:
+        collection.add(
+            documents=documents,
+            metadatas=metadatas,
+            ids=ids,
+            embeddings=embeddings
+        )
+    else:
+        collection.add(
+            documents=documents,
+            metadatas=metadatas,
+            ids=ids
+        )
+
     print(f"Added {len(chunks)} chunks to ChromaDB")
 
 def clear_collection(client, collection_name="papers"):

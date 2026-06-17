@@ -1,8 +1,11 @@
-import os, sys
+import os, sys, time
 from ingestion.extractor import extract_pdf
 from ingestion.cleaner import clean_text
 from ingestion.sen_chunking import sent_chunker
 from storage.vector_store import add_chunks, get_client, get_collection
+from embeddings.embedder import embed_texts
+
+batch_size = 30
 
 def already_ingested(collection, filename):
     results = collection.get(where = {"source": filename})
@@ -25,7 +28,7 @@ def ingest_folder(folder_path):
             print(f"Skipping {curr_pdf} - Already registered")
             continue
 
-        print (f"Ingested {curr_pdf}..")
+        print (f"Ingesting {curr_pdf}..")
 
         raw_text = extract_pdf(pdf_path)
 
@@ -35,8 +38,18 @@ def ingest_folder(folder_path):
 
         cleaned = clean_text(raw_text)
         chunks = sent_chunker(cleaned, clean_file)
-        add_chunks(collection, chunks)
-        
+
+        all_embeddings = []
+        total_batch = -(-len(chunks)//batch_size)
+        for i in range(0,len(chunks), batch_size):
+            batch = chunks[i:i+batch_size]
+            texts = [c["text"] for c in batch]
+            embeddings = embed_texts(texts)
+            all_embeddings.extend(embeddings)
+            print(f"Embedded batch {i//batch_size+1}/{total_batch}")
+            time.sleep(10)
+
+        add_chunks(collection, chunks, all_embeddings)
         print(f"Done, {len(chunks)} chunks stored")
 
     print(f"Total in ChromaDB: {collection.count()}")
