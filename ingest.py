@@ -47,7 +47,7 @@ def ingest_folder(folder_path):
             embeddings = embed_texts(texts)
             all_embeddings.extend(embeddings)
             print(f"Embedded batch {i//batch_size+1}/{total_batch}")
-            time.sleep(10)
+            time.sleep(25)
 
         add_chunks(collection, chunks, all_embeddings)
         print(f"Done, {len(chunks)} chunks stored")
