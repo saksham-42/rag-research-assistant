@@ -1,11 +1,15 @@
-import os, sys, time
+import os, sys, time, re
 from ingestion.extractor import extract_pdf
 from ingestion.cleaner import clean_text
 from ingestion.sen_chunking import sent_chunker
 from storage.vector_store import add_chunks, get_client, get_collection
 from embeddings.embedder import embed_texts
 
-batch_size = 30
+batch_size = 35
+
+def is_noise_chunk(text):
+    words = len(text.split())
+    return words<30
 
 def already_ingested(collection, filename):
     results = collection.get(where = {"source": filename})
@@ -38,6 +42,8 @@ def ingest_folder(folder_path):
 
         cleaned = clean_text(raw_text)
         chunks = sent_chunker(cleaned, clean_file)
+
+        chunks = [c for c in chunks if not is_noise_chunk(c["text"])]
 
         all_embeddings = []
         total_batch = -(-len(chunks)//batch_size)

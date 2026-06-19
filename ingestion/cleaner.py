@@ -10,6 +10,12 @@ REPLACEMENTS = {
     '\u25e6': 'degrees',  # circle/degree symbol
 }
 
+def remove_references(text):
+    match = re.search(r'^References\s*$', text, re.MULTILINE)
+    if match:
+        return text[:match.start()]
+    return text
+
 def fix_unicode(text):
     for char, replacement in REPLACEMENTS.items():
         text = text.replace(char, replacement)
@@ -46,16 +52,17 @@ def fix_section_headings(text):
     return text
 
 def remove_citation(text):
-    text = re.sub(r'(Received|Revised|Accepted|Published|Correspondence|Copyright|Licensee|Academic Editor):.*', '', text)
-    text = re.sub(r'^(Received|Revised|Accepted|Published|Correspondence|Copyright|Licensee)\s*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'(Citation|Received|Revised|Accepted|Published|Correspondence|Copyright|Licensee|Academic Editor):.*', '', text)
+    text = re.sub(r'^.*\b(Citation|Received|Revised|Accepted|Published|Correspondence|Copyright|Licensee)\b.*$', '', text, flags=re.MULTILINE)
     return text
 
 def clean_text(text):
-    text = fix_unicode(text)
+    text = remove_references(text)
     text = remove_citation(text)
-    text = remove_headers_footers(text)
-    text = fix_hyphenation(text)
     text = fix_section_headings(text)
+    text = remove_headers_footers(text)
+    text = fix_unicode(text)
+    text = fix_hyphenation(text)
     text = fix_line_breaks(text)
     text = fix_spacing(text)
     return text.strip()
