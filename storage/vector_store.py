@@ -1,40 +1,34 @@
-import chromadb, sys
+from langchain_chroma import Chroma
+from embeddings.embedder import embedding_model
 
-def get_client():
-    return chromadb.PersistentClient(path="chroma_db")
+def build_vector_store(chunks):
+    return Chroma.from_documents(
+        documents=chunks,
+        embedding=embedding_model,
+        collection_name="papers",
+        persist_directory="./chroma_db",
+        collection_metadata={"hnsw:space": "cosine"}
+    )
 
-def get_collection(client, collection_name="papers"):
-    return client.get_or_create_collection(name=collection_name, metadata={"hnsw:space":"cosine"})
-
-def add_chunks(collection, chunks, embeddings=None):
-    documents = [c["text"] for c in chunks]
-    metadatas = [c["metadata"] for c in chunks]
-    ids = [f"{c['metadata']['source']}_chunk_{c['metadata']['chunk_index']}" for c in chunks]
-
-    if embeddings is not None:
-        collection.add(
-            documents=documents,
-            metadatas=metadatas,
-            ids=ids,
-            embeddings=embeddings
-        )
-    else:
-        collection.add(
-            documents=documents,
-            metadatas=metadatas,
-            ids=ids
-        )
-
-    print(f"Added {len(chunks)} chunks to ChromaDB")
-
-def clear_collection(client, collection_name="papers"):
-    client.delete_collection(name=collection_name)
-    print(f"Cleared collection: {collection_name}")
+def get_vector_store():
+    return Chroma(
+        collection_name="papers",
+        embedding_function=embedding_model,
+        persist_directory="./chroma_db",
+        collection_metadata={"hnsw:space": "cosine"}
+    )
 
 if __name__ == "__main__":
-    client = get_client()
-    if len(sys.argv) > 1 and sys.argv[1] == "--clear":
-        clear_collection(client)
-    else:
-        collection = get_collection(client)
-        print(f"Collection ready. Current count: {collection.count()}")
+    from ingestion.extractor import load_pdfs
+    from ingestion.cleaner import clean_documents
+    from ingestion.sen_chunking import split_documents
+
+    docs = load_pdfs()
+    cleaned = clean_documents(docs)
+    chunks = split_documents(cleaned)
+
+    test_chunks = [c for c in chunks if "Al-Mg-Si-AM" in c.metadata["source"]]
+    print(f"Testing with {len(test_chunks)} chunks from one paper")
+
+    vs = build_vector_store(test_chunks)
+    print(f"Stored. Collection count: {vs._collection.count()}")

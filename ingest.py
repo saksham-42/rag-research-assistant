@@ -1,67 +1,59 @@
-import os, sys, time, re
-from ingestion.extractor import extract_pdf
-from ingestion.cleaner import clean_text
-from ingestion.sen_chunking import sent_chunker
-from storage.vector_store import add_chunks, get_client, get_collection
-from embeddings.embedder import embed_texts
+import time
+from collections import defaultdict
+from ingestion.extractor import load_pdfs
+from ingestion.cleaner import clean_documents
+from ingestion.sen_chunking import split_documents
+from storage.vector_store import get_vector_store
 
-batch_size = 35
+BATCH_SIZE = 35
+SLEEP_TIME = 35
 
 def is_noise_chunk(text):
-    words = len(text.split())
-    return words<30
+    return len(text.split()) < 15
 
-def already_ingested(collection, filename):
-    results = collection.get(where = {"source": filename})
-    return len(results["ids"])>0
+def already_ingested(vector_store, source):
+    results = vector_store._collection.get(where={"source": source}, limit=1)
+    return len(results["ids"]) > 0
 
-def ingest_folder(folder_path):
-    client = get_client()
-    collection = get_collection(client)
+def ingest(folder_path="data"):
+    print("Loading PDFs...")
+    docs = load_pdfs(folder_path)
+    print(f"Loaded {len(docs)} pages")
 
-    pdf_files = [f for f in os.listdir(folder_path) if f.endswith(".pdf")]
+    print("Cleaning...")
+    cleaned = clean_documents(docs)
+    print(f"{len(cleaned)} pages after cleaning")
 
-    if not pdf_files:
-        return print("No pdf files found")
-    
-    for curr_pdf in pdf_files:
-        pdf_path = os.path.join(folder_path, curr_pdf)
-        clean_file = curr_pdf.replace(".pdf", "-clean.txt")
+    print("Splitting into chunks...")
+    chunks = split_documents(cleaned)
+    print(f"{len(chunks)} chunks before noise filter")
 
-        if already_ingested(collection, clean_file):
-            print(f"Skipping {curr_pdf} - Already registered")
+    chunks = [c for c in chunks if not is_noise_chunk(c.page_content)]
+    print(f"{len(chunks)} chunks after noise filter")
+
+    grouped = defaultdict(list)
+    for c in chunks:
+        grouped[c.metadata["source"]].append(c)
+
+    vector_store = get_vector_store()
+
+    for source, paper_chunks in grouped.items():
+        if already_ingested(vector_store, source):
+            print(f"Skipping {source} - already in ChromaDB")
             continue
 
-        print (f"Ingesting {curr_pdf}..")
+        print(f"Ingesting {source} ({len(paper_chunks)} chunks)...")
+        total_batches = -(-len(paper_chunks) // BATCH_SIZE)
 
-        raw_text = extract_pdf(pdf_path)
+        for i in range(0, len(paper_chunks), BATCH_SIZE):
+            batch = paper_chunks[i:i + BATCH_SIZE]
+            vector_store.add_documents(batch)
+            print(f"  Batch {i // BATCH_SIZE + 1}/{total_batches} stored")
+            time.sleep(SLEEP_TIME)
 
-        if not raw_text.strip():
-            print(f"Skipping {curr_pdf} - No text extracted")
-            continue
+        print(f"Done with {source}")
 
-        cleaned = clean_text(raw_text)
-        chunks = sent_chunker(cleaned, clean_file)
-
-        chunks = [c for c in chunks if not is_noise_chunk(c["text"])]
-
-        all_embeddings = []
-        total_batch = -(-len(chunks)//batch_size)
-        for i in range(0,len(chunks), batch_size):
-            batch = chunks[i:i+batch_size]
-            texts = [c["text"] for c in batch]
-            embeddings = embed_texts(texts)
-            all_embeddings.extend(embeddings)
-            print(f"Embedded batch {i//batch_size+1}/{total_batch}")
-            time.sleep(25)
-
-        add_chunks(collection, chunks, all_embeddings)
-        print(f"Done, {len(chunks)} chunks stored")
-
-    print(f"Total in ChromaDB: {collection.count()}")
+    print(f"Total chunks stored: {vector_store._collection.count()}")
 
 if __name__ == "__main__":
-    folder = sys.argv[1] if len(sys.argv)> 1 else "data"
-    ingest_folder(folder) 
-
-    
+    ingest()

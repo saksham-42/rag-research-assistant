@@ -1,65 +1,46 @@
-import tiktoken, re, sys, os
-from nltk.tokenize import sent_tokenize
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from collections import defaultdict
 
-def get_page_number(tokens, token_position, enc):
-    partial_text = enc.decode(tokens[:token_position])
-    pages = re.findall(r'\[Page (\d+)\]', partial_text)
-    return int(pages[-1]) if pages else 1
+def split_documents(docs, chunk_size=2000, chunk_overlap=200):
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        separators=["\n\n", "\n", ".", " ", ""]
+    )
 
-def sent_chunker(text, filename, chunk_size = 512, overlap = 50):
-    enc = tiktoken.get_encoding("cl100k_base")
-    sentences = sent_tokenize(text)
+    grouped = defaultdict(list)
+    for doc in docs:
+        grouped[doc.metadata["source"]].append(doc)
 
     chunks = []
-    chunk_index = 0
-    curr_tokens = []
-    curr_sen = []
+    for source, pages in grouped.items():
+        pages.sort(key=lambda d: d.metadata["page"])
 
-    for sen in sentences:
-        sen_tokens = enc.encode(sen)
+        merged_text = "\n\n".join(page.page_content for page in pages)
 
-        if len(curr_tokens)+len(sen_tokens) > chunk_size:
-            if curr_tokens:
-                chunk_text_str = enc.decode(curr_tokens)
-                chunks.append({
-                    "text": chunk_text_str,
-                    "metadata": {
-                        "source": filename,
-                        "chunk_index": chunk_index,
-                        "page": get_page_number(curr_tokens, 0, enc)
-                    }
-                })
-                chunk_index += 1
-
-                # overlap — keep last few sentences
-                last_sen = curr_sen[-1] if curr_sen else ""
-                last_tokens = enc.encode(last_sen)
-                curr_tokens = last_tokens if len(last_tokens) <= overlap else []
-                curr_sen = [last_sen] if curr_tokens else []
-
-        curr_tokens += sen_tokens
-        curr_sen.append(sen)
-
-    # last chunk
-    if curr_tokens:
-        chunks.append({
-            "text": enc.decode(curr_tokens),
-            "metadata": {
-                "source": filename,
-                "chunk_index": chunk_index,
-                "page": get_page_number(curr_tokens, 0, enc)
+        merged_doc = Document(
+            page_content=merged_text,
+            metadata={
+                "source": source,
+                "title": pages[0].metadata.get("title", ""),
             }
-        })
+        )
+
+        chunks.extend(splitter.split_documents([merged_doc]))
 
     return chunks
 
-
 if __name__ == "__main__":
-    input_path = sys.argv[1]
-    text = open(input_path, encoding="utf-8").read()
-    filename = os.path.basename(input_path)
-    
-    chunks = sent_chunker(text, filename)
+    from ingestion.extractor import load_pdfs
+    from ingestion.cleaner import clean_documents
 
-    print(f"Total chunks: {len(chunks)}")
-    print(f"\nFirst chunk preview:\n{chunks[0]['text'][:300]}")
+    docs = load_pdfs()
+    cleaned = clean_documents(docs)
+    chunks = split_documents(cleaned)
+
+    print(f"Cleaned pages: {len(cleaned)}")
+    print(f"Chunks after splitting: {len(chunks)}")
+    print(f"First chunk metadata: {chunks[0].metadata}")
+    print(f"First chunk content:")
+    print(chunks[0].page_content)
