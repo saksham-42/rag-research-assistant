@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 embedding_model = GoogleGenerativeAIEmbeddings(
-    model="models/gemini-embedding-2",
-    gemini_api_key=os.getenv("GEMINI_API_KEY"),
+    model="models/gemini-embedding-001",
+    google_api_key=os.getenv("GEMINI_API_KEY"),
     output_dimensionality=768
 )
 

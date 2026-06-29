@@ -24,6 +24,8 @@ def split_documents(docs, chunk_size=2000, chunk_overlap=200):
             metadata={
                 "source": source,
                 "title": pages[0].metadata.get("title", ""),
+                "first_page":str(pages[0].metadata.get("page", 0)),
+                "last_page":str(pages[-1].metadata.get("page", 0)),
             }
         )
 
