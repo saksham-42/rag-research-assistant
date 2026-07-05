@@ -2,6 +2,8 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_classic.chains.retrieval import create_retrieval_chain
 from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+from retrieval.fallback import format_fallback, get_fallback_results
+from retrieval.hybrid import retrieve, hybrid_retriever
 from dotenv import load_dotenv
 import os
 
@@ -13,8 +15,17 @@ llm = ChatGoogleGenerativeAI(
 )
 
 PROMPT = """You are a materials science research assistant with deep expertise in metallurgy and materials science.
-Answer only using the provided context from the research papers. If you don't get the answer in the context, then say exactly - 'I can't find this in the uploaded documents'.
-For totally off topic questions, unrelated to metallurgy and materials science DO NOT provide any references and sources, then reply exactly - 'The question asked is outside of scope of this system.'
+Answer only using the provided context.
+You may combine and synthesize information from multiple retrieved chunks if they discuss the same topic.
+Do not introduce information that is not supported by the provided context.
+Follow these rules strictly based on what the context contains:
+- If the context FULLY answers the question: answer completely and in detail.
+- If the context PARTIALLY answers the question: answer using what is available, then clearly state what specific information was not found in the documents.
+- If the context contains relevant information, answer using it even if incomplete. Do not refuse the entire question because one detail is missing and then fallback to websearch.
+- If the retrieved context contains ANY information related to the question, you MUST answer using that information — even if it is incomplete.NEVER combine a partial answer with the phrase 'I can't find this in the uploaded documents.'That phrase is ONLY for when the context has absolutely nothing relevant.
+- When there is absolutely no connection between the context and the question. Reply EXACTLY - 'Not enough information regarding question in uploaded documents' Do NOT use this phrase if you have partial information.
+
+For questions totally unrelated to metallurgy and materials science, reply EXACTLY and ONLY with this phrase, nothing else: 'The question asked is outside of scope of this system'
 Always be specific and to the point, keep it technical, always try to include values, temperatures, compositions and mechanisms whenever available and applicable.
 Give a detailed, thorough answer — do not summarize or truncate, wherever it is possible.(Mostly try to give detailed answers).
 When citing a finding, mention the paper title, page range naturally inline. 
@@ -28,26 +39,18 @@ prompt = ChatPromptTemplate.from_messages([
     ("system",PROMPT), ("human", "{input}")
 ])
 
-def document_chain(retriever):
-    combine_docs_chain = create_stuff_documents_chain(llm,prompt)
-    return create_retrieval_chain(retriever, combine_docs_chain)
+THRESHOLD = 0.6
 
-def ask(question, retriever):
-    chain = document_chain(retriever)
-    result = chain.invoke({"input": question})
-    
-    answer = result["answer"]
-    sources = result["context"]
+def fallback(question):
+    print("\nFalling back to Web Search\n")
+    results, source = get_fallback_results(question)
+    print(format_fallback(results, source))
+    return None
 
-    print(f"\nAnswer:\n{answer}")
-    
-    if "outside of scope " in answer.lower() or "can't find this" in answer.lower():
-        return result
-
-    print(f"\nSources:")
+def sources(source):
     seen = set()
     ct = 1
-    for i, doc in enumerate(sources):
+    for doc in source:
         src = doc.metadata.get('source')
         if src in seen:
             continue
@@ -57,11 +60,45 @@ def ask(question, retriever):
         title = doc.metadata.get('title', 'Unknown') or os.path.basename(src)
         print(f"  [{ct}] {title} — Pages [{fp}-{lp}] — {src}")
         ct+=1
-    
-    return result
+
+def document_chain(retriever):
+    combine_docs_chain = create_stuff_documents_chain(llm,prompt)
+    return create_retrieval_chain(retriever, combine_docs_chain)
+
+def ask(question, k=5):
+    result = retrieve(question,k=k)
+    score = result["score"]
+
+    print(f"Score: {score:.4f} | Threshold: {THRESHOLD}")
+
+    if score < THRESHOLD:
+        print("Score below threshold")
+        return fallback(question)
+
+    r = hybrid_retriever(k=k)
+    chain = document_chain(r)
+    result = chain.invoke({"input": question})
+
+    answer = result["answer"]
+    source = result["context"]
+    answer_clean = answer.strip().lower()
+
+    if "information regarding" in answer_clean:
+        print(f"\nAnswer:\n{answer}")
+        print("\nSources:")
+        sources(source)
+        print("\nPartial Answer...\n")
+        return fallback(question) 
+
+    elif "outside of scope" in answer_clean:
+        print(f"\nAnswer:\n{answer}")
+        return answer
+    else :
+        print(f"\nAnswer:\n{answer}")
+        print("\nSources:")
+        sources(source)
+        return answer
 
 if __name__ == "__main__":
-    from retrieval.hybrid import hybrid_retriever
-    query = "What is the capital of France?"
-    r = hybrid_retriever(k=5)
-    ask(query, r)
+    query = "How does Cr content influence corrosion resistance in CoNiAl HEAs?"
+    ask(query, k=5)
