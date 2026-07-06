@@ -1,30 +1,33 @@
 # RAG Research Assistant
 
-A Retrieval-Augmented Generation (RAG) system for querying materials science research papers. Built as a portfolio project over 6 weeks, covering the full pipeline from PDF ingestion to semantic search, LLM-powered answers, and cloud deployment.
+A Retrieval-Augmented Generation (RAG) system for querying materials science research papers. Built as a portfolio project, covering the full pipeline from PDF ingestion to semantic search, LLM-powered answers, hybrid retrieval, and guaranteed results via web fallback.
 
 ---
 
-## Project Status
+## What It Does
 
-| Week | Focus | Status |
-|---|---|---|
-| 1 | PDF ingestion, cleaning, chunking, vector storage | ✅ Complete |
-| 2 | Embeddings, semantic search, query pipeline | ⬜ Upcoming |
-| 3 | LlamaIndex integration, query engine | ⬜ Upcoming |
-| 4 | FastAPI backend, evaluation metrics | ⬜ Upcoming |
-| 5 | Streamlit UI, Docker, hallucination detection | ⬜ Upcoming |
-| 6 | Deployment, CI/CD, resume prep | ⬜ Upcoming |
+- Upload materials science research papers (PDFs)
+- Ask technical questions in natural language
+- Get detailed, cited answers grounded in the papers — with paper title and page range
+- If the answer isn't in the corpus, automatically falls back to Semantic Scholar / ArXiv and returns relevant paper links
+- Never returns "I don't know" — always produces a result
 
 ---
 
-## Tech Stack (Week 1)
+## Tech Stack
 
 | Component | Tool |
 |---|---|
 | PDF Extraction | PyMuPDF |
 | Text Cleaning | Python (re, nltk) |
-| Tokenization | tiktoken (cl100k_base) |
-| Vector Database | ChromaDB |
+| Chunking | Sentence-aware (RecursiveCharacterTextSplitter) |
+| Embeddings | Google Gemini (`gemini-embedding-2`) |
+| Vector Database | ChromaDB (cosine similarity) |
+| Keyword Search | BM25 (via langchain-community) |
+| Hybrid Retrieval | EnsembleRetriever (BM25 + vector, 50/50) |
+| LLM | Google Gemini (`gemini-2.5-flash-lite`) via LangChain |
+| Web Fallback | Semantic Scholar API + ArXiv API |
+| Framework | LangChain |
 
 ---
 
@@ -32,21 +35,25 @@ A Retrieval-Augmented Generation (RAG) system for querying materials science res
 
 ```
 rag-research-assistant/
-├── data/                    # PDF papers (not tracked in git)
-├── output/                  # Extracted and cleaned text files (not tracked in git)
-├── chroma_db/               # Vector database (not tracked in git)
+├── data/                        # PDF papers (not tracked in git)
+├── chroma_db/                   # Vector database (not tracked in git)
 ├── ingestion/
-│   ├── extractor.py         # PDF → raw text
-│   ├── cleaner.py           # raw text → clean text
-│   ├── chunker.py           # fixed-size chunking (512 tokens, 50 overlap)
-│   └── sen_chunking.py      # sentence-aware chunking (final strategy)
+│   ├── extractor.py             # PDF to raw text pages
+│   ├── cleaner.py               # removes headers, footers, noise
+│   └── sen_chunking.py          # sentence-aware chunking with metadata
+├── embeddings/
+│   └── embedder.py              # Gemini embedding model
 ├── storage/
-│   └── vector_store.py      # ChromaDB setup, add chunks, clear collection
-├── scripts/
-│   └── inspect_chunks.py    # inspect stored chunks and metadata
-├── ingest.py                # full pipeline — runs all PDFs through ingestion
-├── .env                     # API keys (not tracked in git)
-├── .gitignore
+│   └── vector_store.py          # ChromaDB setup and retrieval
+├── retrieval/
+│   ├── search.py                # vector search with optional source filter
+│   ├── hybrid.py                # BM25 + vector ensemble retriever
+│   └── fallback.py              # Semantic Scholar + ArXiv fallback
+├── generation/
+│   └── generator.py             # LLM chain
+├── ingest.py                    # full ingestion pipeline
+├── test.py                      # 83-questions tested
+├── .env                         # API keys (not tracked in git)
 └── README.md
 ```
 
@@ -69,83 +76,88 @@ source env/bin/activate     # Mac/Linux
 
 **3. Install dependencies**
 ```bash
-pip install pymupdf chromadb tiktoken nltk python-dotenv
+pip install -r requirements.txt
 ```
 
-**4. Download NLTK data**
-```bash
-python -c "import nltk; nltk.download('punkt_tab')"
+**4. Set up environment variables**
+
+Create a `.env` file:
+```
+GEMINI_API_KEY=your_key_here
+SEMANTIC_API_KEY=your_key_here   # optional, increases rate limits
 ```
 
 **5. Add your PDFs**
-```bash
-mkdir data output
-```
-Put your PDF files in the `data/` folder.
+
+Put PDF files in the `data/` folder.
 
 **6. Run ingestion**
 ```bash
-python ingest.py data
+python -m ingest
 ```
 
-**7. Inspect chunks**
+**7. Ask a question**
 ```bash
-python -m scripts.inspect_chunks
+python -m generation.generator
 ```
 
 ---
 
-## Ingestion Pipeline
+## Retrieval Strategy
+
+**Hybrid retrieval** — combines BM25 keyword search with vector semantic search using `EnsembleRetriever` (50/50 weights). BM25 handles exact term matches; vector search handles semantic similarity.
+
+**Two-stage result guarantee:**
+1. Embed the query, check top similarity score against threshold (0.6)
+2. If score above threshold → answer from corpus with citations
+3. If score below threshold → fall back to Semantic Scholar, then ArXiv
+
+---
+
+## Citation System
+
+Every answer includes inline citations and a structured sources section:
 
 ```
-PDF
- └─→ extractor.py       →  raw text + [Page X] markers saved to output/
-      └─→ cleaner.py    →  removes headers, footers, unicode noise, citations
-           └─→ sen_chunking.py   →  sentence-aware chunks with metadata
-                └─→ vector_store.py   →  stored in ChromaDB
+Sources:
+  [1] Effect of solution treatment and aging... — Pages [0-3] — data\Al-Mg-Si-AM.pdf
 ```
-
-Each chunk carries metadata:
-- `source` — filename of the original PDF
-- `page` — page number the chunk came from
-- `chunk_index` — position of the chunk within the document
 
 ---
 
 ## Chunking Strategy
 
-Two strategies were implemented and compared:
+Sentence-aware chunking — whole papers are merged per source, then split at sentence boundaries. Never cuts mid-sentence.
 
-**Fixed-size chunking** — splits at exactly 512 tokens with 50-token overlap. Fast and predictable but cuts mid-sentence.
-
-**Sentence-aware chunking** — splits at sentence boundaries, never cutting mid-sentence. Slightly fewer chunks, better quality for retrieval.
-
-**Decision: sentence-aware chunking is used in the final pipeline.**
-
-Reason: materials science papers contain precise numerical values and citations tightly coupled to their sentences. Cutting mid-sentence loses context that directly affects retrieval quality. For example, fixed-size chunking split *"the UTS of which can reach"* from *"1100 MPa [32]"* into two separate chunks — neither alone answers the question.
-
-**Known limitation:** tables are not extracted as structured data. PyMuPDF flattens table content into raw text, losing column relationships. Noted for future improvement.
+**Known limitation:** tables are not extracted as structured data. PyMuPDF flattens table content into raw text, losing column relationships.
 
 ---
 
-## Week 1 — What was built
+## Corpus
 
-- PDF extraction handling clean, multi-column, and scanned PDFs
-- Text cleaning pipeline removing headers, footers, unicode artifacts, citation blocks
-- Fixed-size and sentence-aware chunking with page number metadata
-- ChromaDB vector store with duplicate detection
-- Full batch ingestion pipeline for entire paper folders
-- 726 chunks from 22 materials science papers (1 scanned PDF skipped)
+20 materials science papers covering:
+- Titanium alloys (Ti-6Al-4V, TiAl, Ti-V omega phase)
+- High entropy alloys (HEAs) — CoCrNi, FeCoNi, CoNiAl systems
+- Aluminum alloys (Al-Mg-Si, Al-Zn-Mg-Cu)
+- Steels (dual-phase, martensitic, 12% Cr)
 
-**Papers cover:** titanium alloys, high entropy alloys (HEAs), dual-phase steels, martensitic steels, aluminum alloys
+546 chunks after ingestion and noise filtering.
+
+---
+
+## Test Results
+
+83-question end-to-end test across all alloy systems:
+- **56/83** answered from corpus with citations
+- **27/83** correctly routed to web fallback which including a few partial corpus answers with citations
 
 ---
 
 ## Re-ingestion
 
-If you change chunking strategy or cleaning logic, wipe ChromaDB and re-ingest:
-
 ```bash
-python storage/vector_store.py --clear
-python ingest.py data
+Remove-Item -Recurse -Force chroma_db
+python -m ingest
 ```
+
+**Note:** Don't switch embedding models without full re-ingestion. Mixed embeddings from different models produce incompatible vector spaces and break similarity scores.
