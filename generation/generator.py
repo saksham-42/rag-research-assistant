@@ -39,17 +39,21 @@ prompt = ChatPromptTemplate.from_messages([
     ("system",PROMPT), ("human", "{input}")
 ])
 
-THRESHOLD = 0.6
+THRESHOLD = 0.7
 
 def fallback(question):
-    print("\nFalling back to Web Search\n")
     results, source = get_fallback_results(question)
-    print(format_fallback(results, source))
-    return None
+    ans = format_fallback(results, source)
+    return {
+        "answer":ans,
+        "citations":[],
+        "chunks_used":0
+    }
 
 def sources(source):
     seen = set()
     ct = 1
+    citations = []
     for doc in source:
         src = doc.metadata.get('source')
         if src in seen:
@@ -58,8 +62,14 @@ def sources(source):
         fp = doc.metadata.get('first_page', '?')
         lp = doc.metadata.get('last_page', '?')
         title = doc.metadata.get('title', 'Unknown') or os.path.basename(src)
-        print(f"  [{ct}] {title} — Pages [{fp}-{lp}] — {src}")
+        citations.append({
+            "title":title,
+            "source": src,
+            "first_page":fp,
+            "last_page":lp
+        })
         ct+=1
+    return citations
 
 def document_chain(retriever):
     combine_docs_chain = create_stuff_documents_chain(llm,prompt)
@@ -68,7 +78,6 @@ def document_chain(retriever):
 def ask(question, k=5):
     result = retrieve(question,k=k)
     score = result["score"]
-
     print(f"Score: {score:.4f} | Threshold: {THRESHOLD}")
 
     if score < THRESHOLD:
@@ -84,20 +93,28 @@ def ask(question, k=5):
     answer_clean = answer.strip().lower()
 
     if "information regarding" in answer_clean:
-        print(f"\nAnswer:\n{answer}")
-        print("\nSources:")
-        sources(source)
+        citation = sources(source)
         print("\nPartial Answer...\n")
-        return fallback(question) 
+        fallback(question) 
+        return {
+            "answer":answer,
+            "citations":citation,
+            "chunks_used": len(source)
+        }
 
     elif "outside of scope" in answer_clean:
-        print(f"\nAnswer:\n{answer}")
-        return answer
+        return {
+            "answer":answer,
+            "citations":[],
+            "chunks_used": 0
+        }
     else :
-        print(f"\nAnswer:\n{answer}")
-        print("\nSources:")
-        sources(source)
-        return answer
+        citation = sources(source)
+        return {
+            "answer":answer,
+            "citations":citation,
+            "chunks_used": len(source)
+        }
 
 if __name__ == "__main__":
     query = "How does Cr content influence corrosion resistance in CoNiAl HEAs?"
