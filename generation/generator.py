@@ -5,7 +5,7 @@ from langchain_classic.chains.combine_documents import create_stuff_documents_ch
 from retrieval.fallback import format_fallback, get_fallback_results
 from retrieval.hybrid import retrieve, hybrid_retriever
 from dotenv import load_dotenv
-import os
+import os, time
 
 load_dotenv()
 llm = ChatGoogleGenerativeAI(
@@ -76,17 +76,26 @@ def document_chain(retriever):
     return create_retrieval_chain(retriever, combine_docs_chain)
 
 def ask(question, k=5):
+    t0 = time.time()
     result = retrieve(question,k=k)
+    ret_t = time.time()-t0
+
     score = result["score"]
     print(f"Score: {score:.4f} | Threshold: {THRESHOLD}")
+    print(f"Retrieval time: {ret_t:.2f}s")
 
     if score < THRESHOLD:
         print("Score below threshold")
         return fallback(question)
 
+    t1 = time.time()
     r = hybrid_retriever(k=k)
     chain = document_chain(r)
     result = chain.invoke({"input": question})
+    gen_t = time.time()-t1
+
+    print(f"Generation time : {gen_t:.2f}s")
+    print(f"Total time : {gen_t + ret_t:.2f}s")
 
     answer = result["answer"]
     source = result["context"]

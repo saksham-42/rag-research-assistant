@@ -41,6 +41,6 @@ def retrieve(query: str, k: int = 5, source=None) -> dict:
 
 if __name__ == "__main__":
     hybrid = retrieve("What manufacturing methods are used for High Entropy Alloys?")
-    for i, doc in enumerate(hybrid):
+    for i, doc in enumerate(hybrid["documents"]):
         print(f"\nResult {i+1} | Source: {doc.metadata.get('source')} | Page: {doc.metadata.get('page')}")
         print(f"{doc.page_content}")

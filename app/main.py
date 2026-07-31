@@ -11,6 +11,8 @@ from app.logging import logger
 
 app = FastAPI(title="RAG RESEARCH ASSISTANT")
 
+cache = {}
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -60,8 +62,12 @@ async def query(payload: QueryRequest):
     ques = payload.question.strip()
     if not ques:
         raise HTTPException(status_code=400, detail="Question can't be empty")
+    if ques in cache:
+        logger.info("Cache hit — returning cached answer")
+        return QueryResponse(**cache[ques])
     try:
         ans = ask(ques,k=5)
+        cache[ques] = ans
         return QueryResponse(**ans)
     except Exception as e:
         logger.error(f"Error in Query: {e}")
