@@ -4,4 +4,5 @@ __pycache__/
 .env
 data/
 chroma_db/
+chroma_db_1000/
 output/

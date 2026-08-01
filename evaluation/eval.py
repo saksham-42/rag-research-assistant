@@ -125,7 +125,7 @@ def run():
         for chunk in chunks[:TOP_K]:
             relevant = is_relevant(question, chunk.page_content)
             relevant_flags.append(relevant)
-            time.sleep(0.5)
+            time.sleep(1.0)
 
         hit = any(relevant_flags)
         precision = sum(relevant_flags) / TOP_K
