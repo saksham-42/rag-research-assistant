@@ -145,6 +145,32 @@ Sentence-aware chunking — whole papers are merged per source, then split at se
 
 ---
 
+## Evaluation Results
+
+### Retrieval Precision (chunk_size=2000, 83 questions)
+| Metric | Score |
+|---|---|
+| Hit Rate @3 | 63.9% |
+| Mean Precision @3 | 40.2% |
+
+### Answer Quality (30 questions, LLM-as-judge)
+| Metric | Score |
+|---|---|
+| Avg Faithfulness | 3.23 / 5 |
+| Avg Relevance | 4.93 / 5 |
+
+### Chunk Size Ablation Study
+| Metric | chunk_size=1000 | chunk_size=2000 |
+|---|---|---|
+| Hit Rate @3 | 66.3% | 63.9% |
+| Mean Precision @3 | 37.3% | 40.2% |
+| Avg Faithfulness | 3.20 / 5 | 3.23 / 5 |
+| Avg Relevance | 4.73 / 5 | 4.93 / 5 |
+
+**Decision:** chunk_size=2000 selected as default. While smaller chunks achieved a marginally higher hit rate, chunk_size=2000 produced better precision, faithfulness, and relevance — critical for a research assistant where answer completeness matters more than raw retrieval coverage.
+
+---
+
 ## Test Results
 
 83-question end-to-end test across all alloy systems:
