@@ -24,7 +24,7 @@ A Retrieval-Augmented Generation (RAG) system for querying materials science res
 | Embeddings | Google Gemini (`gemini-embedding-2`) |
 | Vector Database | ChromaDB (cosine similarity) |
 | Keyword Search | BM25 (via langchain-community) |
-| Hybrid Retrieval | EnsembleRetriever (BM25 + vector, 50/50) |
+| Hybrid Retrieval | EnsembleRetriever (BM25 + vector, 40/60) |
 | LLM | Google Gemini (`gemini-2.5-flash-lite`) via LangChain |
 | Web Fallback | Semantic Scholar API + ArXiv API |
 | Framework | LangChain |
@@ -35,26 +35,34 @@ A Retrieval-Augmented Generation (RAG) system for querying materials science res
 
 ```
 rag-research-assistant/
+├── app/
+│   ├── logging.py               # Logger setup
+│   ├── main.py                  # FastAPI app, endpoints, caching
+│   └── schemas.py               # Pydantic request/response models
 ├── data/                        # PDF papers (not tracked in git)
 ├── chroma_db/                   # Vector database (not tracked in git)
-├── ingestion/
-│   ├── extractor.py             # PDF to raw text pages
-│   ├── cleaner.py               # removes headers, footers, noise
-│   └── sen_chunking.py          # sentence-aware chunking with metadata
 ├── embeddings/
 │   └── embedder.py              # Gemini embedding model
-├── storage/
-│   └── vector_store.py          # ChromaDB setup and retrieval
-├── retrieval/
-│   ├── search.py                # vector search with optional source filter
-│   ├── hybrid.py                # BM25 + vector ensemble retriever
-│   └── fallback.py              # Semantic Scholar + ArXiv fallback
+├── evaluation/
+│   ├── ans_eval.py              # answer quality scoring (LLM-as-judge)
+│   └── eval.py                  # retrieval precision measurement
 ├── generation/
 │   └── generator.py             # LLM chain
+├── ingestion/
+│   ├── cleaner.py               # removes headers, footers, noise
+│   ├── extractor.py             # PDF to raw text pages
+│   └── sen_chunking.py          # sentence-aware chunking with metadata
+├── retrieval/
+│   ├── fallback.py              # Semantic Scholar + ArXiv fallback
+│   ├── hybrid.py                # BM25 + vector ensemble retriever
+│   └── search.py                # vector search with optional source filter
+├── scripts/
+│   └── inspect_chunks.py        # chunk inspection utility
+├── storage/
+│   └── vector_store.py          # ChromaDB setup and retrieval
 ├── ingest.py                    # full ingestion pipeline
-├── test.py                      # 83-questions tested
-├── .env                         # API keys (not tracked in git)
-└── README.md
+├── test.py                      # 83-question end-to-end test
+└── ui.py                        # Streamlit frontend
 ```
 
 ---
@@ -108,7 +116,7 @@ python -m generation.generator
 **Hybrid retrieval** — combines BM25 keyword search with vector semantic search using `EnsembleRetriever` (50/50 weights). BM25 handles exact term matches; vector search handles semantic similarity.
 
 **Two-stage result guarantee:**
-1. Embed the query, check top similarity score against threshold (0.6)
+1. Embed the query, check top similarity score against threshold (0.7)
 2. If score above threshold → answer from corpus with citations
 3. If score below threshold → fall back to Semantic Scholar, then ArXiv
 
@@ -168,6 +176,19 @@ Sentence-aware chunking — whole papers are merged per source, then split at se
 | Avg Relevance | 4.73 / 5 | 4.93 / 5 |
 
 **Decision:** chunk_size=2000 selected as default. While smaller chunks achieved a marginally higher hit rate, chunk_size=2000 produced better precision, faithfulness, and relevance — critical for a research assistant where answer completeness matters more than raw retrieval coverage.
+
+### Retrieval-Weight Tuning
+**Fix applied:** Adjusted hybrid retrieval weights from 0.5/0.5 to 0.4/0.6 (BM25/vector), giving more weight to semantic search.
+
+| Metric | Before (0.5/0.5) | After (0.4/0.6) | Change |
+|---|---|---|---|
+| Hit Rate @3 | 63.9% | 77.1% | +13.2% |
+| Mean Precision @3 | 40.2% | 49.4% | +9.2% |
+| Avg Faithfulness | 3.23 / 5 | 3.50 / 5 | +0.27 |
+| Avg Relevance | 4.93 / 5 | 4.87 / 5 | -0.06 |
+
+**Remaining failures:** A small set of HEA-specific questions (CoCrNi, CoCrNiAlCu papers) still miss due to semantic similarity between HEA papers making them hard to distinguish at retrieval time.
+
 
 ---
 
