@@ -30,6 +30,8 @@ async def ingest(file:UploadFile = File()):
     logger.info(f"Ingest request received:{file.filename}")
     if not file.filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+
+    os.makedirs("data", exist_ok=True)
     
     vs = get_vector_store()
     exists = vs.get()
