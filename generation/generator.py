@@ -75,9 +75,9 @@ def document_chain(retriever):
     combine_docs_chain = create_stuff_documents_chain(llm,prompt)
     return create_retrieval_chain(retriever, combine_docs_chain)
 
-def ask(question, k=5):
+def ask(question, k=5, source = None):
     t0 = time.time()
-    result = retrieve(question,k=k)
+    result = retrieve(question,k=k,source=source)
     ret_t = time.time()-t0
 
     score = result["score"]
@@ -89,7 +89,7 @@ def ask(question, k=5):
         return fallback(question)
 
     t1 = time.time()
-    r = hybrid_retriever(k=k)
+    r = hybrid_retriever(k=k,source=source)
     chain = document_chain(r)
     result = chain.invoke({"input": question})
     gen_t = time.time()-t1

@@ -17,13 +17,19 @@ def hybrid_retriever(k=5, source=None):
     
     if source:
         documents = [d for d in documents if d.metadata.get("source") == source]
+
+    if not documents:
+        documents = [
+            Document(page_content=doc, metadata= meta)
+            for doc, meta in zip(docs, metadatas)
+        ]
     
     bm25_retriever = BM25Retriever.from_documents(documents, k=k)
     vector_retriever = retriever(k=k, source=source)
     
     return EnsembleRetriever(
         retrievers=[bm25_retriever, vector_retriever],
-        weights=[0.5, 0.5]
+        weights=[0.4, 0.6]
     )
 
 def retrieve(query: str, k: int = 5, source=None) -> dict:

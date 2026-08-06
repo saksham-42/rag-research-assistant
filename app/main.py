@@ -62,11 +62,12 @@ async def query(payload: QueryRequest):
     ques = payload.question.strip()
     if not ques:
         raise HTTPException(status_code=400, detail="Question can't be empty")
+    ques = f"{ques}::{payload.filter_document or 'all'}"
     if ques in cache:
         logger.info("Cache hit — returning cached answer")
         return QueryResponse(**cache[ques])
     try:
-        ans = ask(ques,k=5)
+        ans = ask(ques,k=5,source=payload.filter_document)
         cache[ques] = ans
         return QueryResponse(**ans)
     except Exception as e:

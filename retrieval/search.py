@@ -4,7 +4,7 @@ def retriever(k=5, source=None):
     vector_store = get_vector_store()
     search_k = {"k":k}
     if source:
-        search_k["filter"] = {"source": source}
+        search_k["filter"] = {"source": {"$contains": source}}
     return vector_store.as_retriever(search_kwargs = search_k)
 
 def search(query, k=5, source_filter=None):
